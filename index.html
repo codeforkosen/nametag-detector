@@ -1,0 +1,117 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="icon" href="data:">
+<title>高専プロコン#35 奈良大会 吊り下げ名札色判定</title>
+<style>
+video, canvas {
+  display: block;
+  margin: 10px auto;
+}
+#divres {
+  text-align: center;
+  padding: .2em;
+  font-size: 20px;
+}
+body {
+  text-align: center;
+}
+</style>
+</head>
+<body>
+
+<h1>高専プロコン#35 奈良大会 吊り下げ名札色判定</h1>
+<div id="divres"></div>
+<video id="video" width="640" height="480" autoplay style="display:none"></video>
+<canvas id="canvas" width="640" height="480"></canvas>
+
+<hr>
+DATA: <a href=https://github.com/codeforkosen/kosen-opendata/>高専プロコン#35 吊り下げ名札色一覧 - 高専オープンデータ</a><br>
+<a href=https://github.com/codeforkosen/nametag-detector>src on GitHub</a><br>
+
+<script type="module">
+import { CSV } from "https://js.sabae.cc/CSV.js";
+import { rgb2hsl } from "https://js.sabae.cc/rgb2hsl.js";
+
+const url = "https://codeforkosen.github.io/kosen-opendata/data/procon/procon2024_namecard.csv";
+const colordata = await CSV.fetchJSON(url);
+
+// カメラの映像を取得
+const video = document.getElementById('video');
+navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+    video.srcObject = stream;
+});
+
+const getColorAverage = (ctx, x, y, w, h) => {
+  // 指定した範囲の画像データを取得
+  const imageData = ctx.getImageData(x, y, w, h);
+  const data = imageData.data;
+  
+  let r = 0, g = 0, b = 0, a = 0;
+  const pixelCount = w * h;
+  
+  // 各ピクセルの色を合計
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i];     // 赤
+    g += data[i + 1]; // 緑
+    b += data[i + 2]; // 青
+    a += data[i + 3]; // アルファ
+  }
+  
+  // 平均値を計算
+  r = Math.floor(r / pixelCount);
+  g = Math.floor(g / pixelCount);
+  b = Math.floor(b / pixelCount);
+  a = Math.floor(a / pixelCount);
+  return [r, g, b, a];
+};
+const decodeHexColor = (hex) => {
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return [r, g, b];
+};
+const calcColorDistance = (c1, c2) => {
+  const hsl1 = rgb2hsl(c1);
+  const hsl2 = rgb2hsl(c2);
+  const dh0 = Math.abs(hsl1[0] - hsl2[1])
+  const dh = dh0 > 360 / 2 ? 360 - dh0 : dh0;
+  const ds = Math.abs(hsl1[1] - hsl2[1]);
+  const dl = Math.abs(hsl1[2] - hsl2[2]);
+  console.log(dh, ds, dl);
+  return dh + ds + dl;
+};
+const getNearColor = (color, data) => {
+  let m = 10000;
+  let res = null;
+  for (const d of data) {
+    const c = decodeHexColor(d.rgb);
+    const v = calcColorDistance(color, c);
+    if (v < m) {
+      m = v;
+      res = d;
+    }
+  }
+  return res;
+};
+
+const detectColor = () => {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.drawImage(video, 0, 0, w, h);
+
+  const pw = 8;
+  const x = Math.floor(w / 2) - pw / 2;
+  const y = Math.floor(h / 2) - pw / 2;
+  const color = getColorAverage(ctx, x, y, pw, pw);
+  const d = getNearColor(color, colordata);
+  
+  divres.textContent = d.name + " " + d.color;
+  ctx.strokeStlye = "white";
+  ctx.strokeRect(x - pw, y - pw, pw, pw);
+}
+
+setInterval(detectColor, 100);
+</script>
+
+</body>
+</html>
+
